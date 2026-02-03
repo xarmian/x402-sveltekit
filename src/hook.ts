@@ -191,6 +191,7 @@ export function paymentHook(options: PaymentHookOptions): Handle {
 	}
 
 	const hasStaticRoutes = Object.keys(staticRoutes).length > 0;
+	const hasDynamicRoutes = dynamicRoutesByMethod.size > 0;
 
 	// Only create HTTP resource server if there are static routes
 	const httpServer = hasStaticRoutes
@@ -202,7 +203,20 @@ export function paymentHook(options: PaymentHookOptions): Handle {
 	let initPromise: Promise<void> | null = null;
 
 	if (httpServer) {
+		// HTTP server initialization also initializes the underlying resource server
 		initPromise = httpServer
+			.initialize()
+			.then(() => {
+				initState = { status: 'success' };
+			})
+			.catch((err) => {
+				const error = err instanceof Error ? err : new Error(String(err));
+				initState = { status: 'failed', error };
+				log.error(ErrorMessages.LOG_INIT_FAILED, sanitizeError(err));
+			});
+	} else if (hasDynamicRoutes) {
+		// Dynamic routes need the resource server initialized to fetch supported kinds
+		initPromise = resourceServer
 			.initialize()
 			.then(() => {
 				initState = { status: 'success' };
