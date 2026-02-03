@@ -1,6 +1,6 @@
 {
   "name": "x402-sveltekit",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "SvelteKit middleware for x402 HTTP payment protocol",
   "license": "Apache-2.0",
   "type": "module",
