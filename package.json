@@ -68,6 +68,6 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/xarmian/x402-sveltekit"
+    "url": "git+https://github.com/xarmian/x402-sveltekit.git"
   }
 }
