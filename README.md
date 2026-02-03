@@ -5,27 +5,32 @@ SvelteKit middleware for the [x402 HTTP payment protocol](https://x402.org). Enf
 ## Install
 
 ```bash
-npm install x402-sveltekit @x402/core @x402/evm
-# Optional: npm install @x402/svm @x402/avm
+npm install x402-sveltekit @x402/core
+
+# Install the chain schemes you need:
+npm install @x402/evm    # EVM chains (Base, Ethereum, etc.)
+npm install @x402/svm    # Solana
 ```
 
 ## Quick Start
-
-The simplest way to get started — `paymentHookFromConfig` handles all setup:
 
 ```ts
 // src/hooks.server.ts
 import { sequence } from '@sveltejs/kit/hooks';
 import { paymentHookFromConfig } from 'x402-sveltekit';
+import { registerExactEvmScheme } from '@x402/evm/exact/server';
 
 const x402Handle = paymentHookFromConfig({
   facilitatorUrl: 'https://x402.org/facilitator',
+  schemes: [
+    { register: registerExactEvmScheme },
+  ],
   routes: {
     'GET /api/premium': {
       accepts: [
         {
           scheme: 'exact',
-          network: 'eip155:8453',
+          network: 'eip155:8453', // Base mainnet
           payTo: '0xYourWalletAddress',
           price: '$0.01',
         },
@@ -38,25 +43,46 @@ const x402Handle = paymentHookFromConfig({
 export const handle = sequence(x402Handle, yourAppHandle);
 ```
 
+## Multi-Chain Support
+
+Register multiple chain schemes to accept payments on different networks:
+
+```ts
+import { registerExactEvmScheme } from '@x402/evm/exact/server';
+import { registerExactSvmScheme } from '@x402/svm/exact/server';
+
+const x402Handle = paymentHookFromConfig({
+  facilitatorUrl: 'https://x402.org/facilitator',
+  schemes: [
+    { register: registerExactEvmScheme },  // EVM chains
+    { register: registerExactSvmScheme },  // Solana
+    // Future: { register: registerExactAvmScheme } for Algorand
+  ],
+  routes: { ... },
+});
+```
+
 ## Three API Levels
 
 ### Level 3: `paymentHookFromConfig` (recommended)
 
-Auto-configures everything from a facilitator URL. Automatically discovers and registers installed chain schemes (`@x402/evm`, `@x402/svm`, `@x402/avm`).
+The simplest API — provide a facilitator URL, schemes, and routes:
 
 ```ts
 import { paymentHookFromConfig } from 'x402-sveltekit';
+import { registerExactEvmScheme } from '@x402/evm/exact/server';
 
 const handle = paymentHookFromConfig({
   facilitatorUrl: 'https://x402.org/facilitator',
+  schemes: [{ register: registerExactEvmScheme }],
   routes: { ... },
-  enabled: true, // defaults to true
+  enabled: true, // default: true
 });
 ```
 
 ### Level 2: `paymentHook`
 
-Bring your own `x402ResourceServer` and routes. Useful when you need custom scheme registration or lifecycle hooks.
+Bring your own `x402ResourceServer`. Useful when you need custom configuration or lifecycle hooks:
 
 ```ts
 import { paymentHook } from 'x402-sveltekit';
@@ -76,7 +102,7 @@ const handle = paymentHook({
 
 ### Level 1: `paymentHookFromHTTPServer`
 
-Bring your own fully-configured `x402HTTPResourceServer`. For static routes only.
+Bring your own fully-configured `x402HTTPResourceServer`. For static routes only:
 
 ```ts
 import { paymentHookFromHTTPServer } from 'x402-sveltekit';
@@ -90,26 +116,27 @@ const handle = paymentHookFromHTTPServer(httpServer);
 
 ## Dynamic Routes
 
-Compute payment options per-request. Return `null` to allow free access:
+Compute payment options per-request. Return `null` or `[]` to allow free access:
 
 ```ts
 const handle = paymentHookFromConfig({
   facilitatorUrl: '...',
+  schemes: [{ register: registerExactEvmScheme }],
   routes: {
-    'POST /api/v1/draw': {
+    'POST /api/v1/generate': {
       accepts: async (event) => {
         const body = await event.request.json();
 
         // Free tier — no payment needed
-        if (!body.longevity) return null;
+        if (body.size === 'small') return null;
 
-        // Dynamic pricing
+        // Dynamic pricing based on request
         const price = computePrice(body);
         return [
           { scheme: 'exact', network: 'eip155:8453', payTo: '0x...', price: `$${price}` },
         ];
       },
-      description: 'Draw with longevity',
+      description: 'Generate content',
       mimeType: 'application/json',
     },
   },
@@ -133,39 +160,27 @@ export async function POST({ locals }) {
 
 ## Chain Helpers
 
-Utility functions for multi-chain payment options:
+Utility functions for building multi-chain payment options:
 
 ```ts
 import { buildPaymentOptions, getEnabledChainNames } from 'x402-sveltekit';
 
 const chains = {
-  evm: [{ payTo: '0x...', network: 'eip155:8453' }],
+  evm: [
+    { payTo: '0x...', network: 'eip155:8453' },    // Base mainnet
+    { payTo: '0x...', network: 'eip155:84532' },   // Base Sepolia
+  ],
   solana: { payTo: 'So1...', network: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp' },
-  algorand: null,
+  algorand: null, // Not configured
 };
 
-const options = buildPaymentOptions(chains, 0.01); // $0.01 on all chains
+const options = buildPaymentOptions(chains, 0.01); // $0.01 on all configured chains
 const enabled = getEnabledChainNames(chains); // ['evm', 'solana']
-```
-
-## Custom Scheme Registration
-
-```ts
-import { paymentHookFromConfig } from 'x402-sveltekit';
-import { registerExactEvmScheme } from '@x402/evm/exact/server';
-
-const handle = paymentHookFromConfig({
-  facilitatorUrl: '...',
-  schemes: [
-    { register: (server) => registerExactEvmScheme(server) },
-  ],
-  routes: { ... },
-});
 ```
 
 ## TypeScript
 
-Add payment info to your `app.d.ts`:
+Add payment info types to your `app.d.ts`:
 
 ```ts
 import type { PaymentInfo } from 'x402-sveltekit';
@@ -178,6 +193,17 @@ declare global {
   }
 }
 ```
+
+## Supported Networks
+
+Networks use [CAIP-2](https://github.com/ChainAgnostic/CAIPs/blob/main/CAIPs/caip-2.md) format:
+
+| Chain | Network ID | Example |
+|-------|------------|---------|
+| Base | `eip155:8453` | Mainnet |
+| Base Sepolia | `eip155:84532` | Testnet |
+| Ethereum | `eip155:1` | Mainnet |
+| Solana | `solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp` | Mainnet |
 
 ## License
 
