@@ -78,8 +78,17 @@ export interface PaymentHookFromConfigOptions {
 	/** Route configurations for payment-protected endpoints */
 	routes: RoutesConfig;
 
-	/** Scheme registrations (e.g. EVM, SVM). If omitted, auto-registers EVM+SVM+AVM. */
-	schemes?: SchemeRegistration[];
+	/**
+	 * Scheme registrations for supported blockchains.
+	 *
+	 * Currently supported:
+	 * - EVM: `import { registerExactEvmScheme } from '@x402/evm/exact/server'`
+	 * - SVM (Solana): `import { registerExactSvmScheme } from '@x402/svm/exact/server'`
+	 *
+	 * Future (not yet available):
+	 * - AVM (Algorand): `import { registerExactAvmScheme } from '@x402/avm/exact/server'`
+	 */
+	schemes: SchemeRegistration[];
 
 	/** Whether the payment system is enabled (defaults to true) */
 	enabled?: boolean;

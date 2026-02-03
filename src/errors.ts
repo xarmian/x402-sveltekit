@@ -18,9 +18,6 @@ export const ErrorMessages = {
 	/** Log prefix for initialization failures */
 	LOG_INIT_FAILED: '[x402] Failed to initialize HTTP resource server:',
 
-	/** Log prefix for auto-registration failures */
-	LOG_AUTO_REGISTER_FAILED: '[x402] Failed to auto-register schemes:',
-
 	/** Log prefix for settlement failures */
 	LOG_SETTLEMENT_FAILED: '[x402] Settlement failed:',
 

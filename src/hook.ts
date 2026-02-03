@@ -299,20 +299,28 @@ export function paymentHook(options: PaymentHookOptions): Handle {
 /**
  * Level 3 (highest): Create a payment hook from config.
  *
- * Auto-configures the resource server from facilitator URL and scheme registrations.
- * If no schemes are provided, automatically registers EVM + SVM + AVM (if available).
+ * Configures the resource server from facilitator URL and explicit scheme registrations.
  *
  * @param options - Configuration options
  * @param options.facilitatorUrl - URL of the x402 facilitator service
  * @param options.routes - Route configurations mapping patterns to payment configs
- * @param options.schemes - Optional scheme registrations (auto-registers EVM+SVM+AVM if omitted)
+ * @param options.schemes - Scheme registrations (EVM, SVM, etc.)
  * @param options.enabled - Whether payment enforcement is enabled (default: true)
  * @param options.logger - Custom logger or null to disable (default: console.error)
  * @returns A SvelteKit Handle function for payment enforcement
  *
  * @example
+ * // Register EVM and SVM schemes
+ * import { registerExactEvmScheme } from '@x402/evm/exact/server';
+ * import { registerExactSvmScheme } from '@x402/svm/exact/server';
+ *
  * export const handle = paymentHookFromConfig({
  *   facilitatorUrl: 'https://x402.org/facilitator',
+ *   schemes: [
+ *     { register: registerExactEvmScheme },
+ *     { register: registerExactSvmScheme },
+ *     // When available: { register: registerExactAvmScheme } from '@x402/avm/exact/server'
+ *   ],
  *   routes: {
  *     'POST /api/paid': { accepts: async () => [...], description: 'Paid endpoint' }
  *   }
@@ -320,7 +328,6 @@ export function paymentHook(options: PaymentHookOptions): Handle {
  */
 export function paymentHookFromConfig(options: PaymentHookFromConfigOptions): Handle {
 	const { facilitatorUrl, routes, schemes, enabled = true, logger } = options;
-	const log = getLogger(logger);
 
 	if (!enabled) {
 		return async ({ event, resolve }) => resolve(event);
@@ -329,105 +336,12 @@ export function paymentHookFromConfig(options: PaymentHookFromConfigOptions): Ha
 	const facilitatorClient = new HTTPFacilitatorClient({ url: facilitatorUrl });
 	const resourceServer = new x402ResourceServer(facilitatorClient);
 
-	if (schemes) {
-		// Synchronous scheme registration
-		for (const scheme of schemes) {
-			scheme.register(resourceServer);
-		}
-		return paymentHook({ resourceServer, routes, enabled, logger });
+	// Register all schemes synchronously
+	for (const scheme of schemes) {
+		scheme.register(resourceServer);
 	}
 
-	// Auto-register schemes asynchronously, then delegate to paymentHook
-	let initState: InitState = { status: 'pending' };
-	let innerHook: Handle | null = null;
-
-	const setupPromise = autoRegisterSchemes(resourceServer, log)
-		.then(() => {
-			innerHook = paymentHook({ resourceServer, routes, enabled, logger });
-			initState = { status: 'success' };
-		})
-		.catch((err) => {
-			const error = err instanceof Error ? err : new Error(String(err));
-			initState = { status: 'failed', error };
-			log.error(ErrorMessages.LOG_AUTO_REGISTER_FAILED, sanitizeError(err));
-			// Still create the hook - schemes might work partially
-			innerHook = paymentHook({ resourceServer, routes, enabled, logger });
-		});
-
-	return async ({ event, resolve }) => {
-		if (initState.status === 'pending') {
-			await setupPromise;
-		}
-		// Note: We don't return 503 here because auto-registration failure is non-fatal
-		// The paymentHook will still work, just without the failed schemes
-		// Defensive check - innerHook should always be set after awaiting setupPromise
-		if (!innerHook) {
-			return create503Response();
-		}
-		return innerHook({ event, resolve });
-	};
-}
-
-/**
- * Check if an error is a "module not found" error from dynamic import.
- */
-function isModuleNotFoundError(err: unknown): boolean {
-	if (err instanceof Error) {
-		// Node.js module not found errors
-		if (err.message.includes('Cannot find module') || err.message.includes('Cannot find package')) {
-			return true;
-		}
-		// ERR_MODULE_NOT_FOUND code
-		if ('code' in err && err.code === 'ERR_MODULE_NOT_FOUND') {
-			return true;
-		}
-	}
-	return false;
-}
-
-/**
- * Auto-register known scheme packages (EVM, SVM, AVM) if available.
- * Uses dynamic imports so optional peer dependencies can be absent.
- *
- * Only silently ignores "module not found" errors. Other errors (like
- * configuration issues or version mismatches) are logged as warnings.
- */
-async function autoRegisterSchemes(
-	resourceServer: x402ResourceServer,
-	logger?: Logger
-): Promise<void> {
-	const log = logger ?? { error: console.error };
-
-	// EVM
-	try {
-		const { registerExactEvmScheme } = await import('@x402/evm/exact/server');
-		registerExactEvmScheme(resourceServer);
-	} catch (err) {
-		if (!isModuleNotFoundError(err)) {
-			log.error('[x402] Error registering EVM scheme (package installed but failed):', sanitizeError(err));
-		}
-		// Module not found is expected - silently ignore
-	}
-
-	// SVM
-	try {
-		const { registerExactSvmScheme } = await import('@x402/svm/exact/server');
-		registerExactSvmScheme(resourceServer);
-	} catch (err) {
-		if (!isModuleNotFoundError(err)) {
-			log.error('[x402] Error registering SVM scheme (package installed but failed):', sanitizeError(err));
-		}
-	}
-
-	// AVM
-	try {
-		const { registerExactAvmScheme } = await import('@x402/avm/exact/server');
-		registerExactAvmScheme(resourceServer);
-	} catch (err) {
-		if (!isModuleNotFoundError(err)) {
-			log.error('[x402] Error registering AVM scheme (package installed but failed):', sanitizeError(err));
-		}
-	}
+	return paymentHook({ resourceServer, routes, enabled, logger });
 }
 
 /**

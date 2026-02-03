@@ -380,6 +380,7 @@ describe('paymentHookFromConfig', () => {
 		const customLogger = { error: vi.fn() };
 		const hook = paymentHookFromConfig({
 			facilitatorUrl: 'https://x402.org/facilitator',
+			schemes: [],
 			routes: {},
 			enabled: true,
 			logger: customLogger,
@@ -395,6 +396,7 @@ describe('paymentHookFromConfig', () => {
 	it('accepts null logger to disable logging', async () => {
 		const hook = paymentHookFromConfig({
 			facilitatorUrl: 'https://x402.org/facilitator',
+			schemes: [],
 			routes: {},
 			enabled: true,
 			logger: null,

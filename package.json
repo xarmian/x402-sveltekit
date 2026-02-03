@@ -34,17 +34,13 @@
   "peerDependencies": {
     "@sveltejs/kit": "^2.0.0",
     "@x402/evm": "^2.2.0",
-    "@x402/svm": "^2.2.0",
-    "@x402/avm": "^2.2.0"
+    "@x402/svm": "^2.2.0"
   },
   "peerDependenciesMeta": {
     "@x402/evm": {
       "optional": true
     },
     "@x402/svm": {
-      "optional": true
-    },
-    "@x402/avm": {
       "optional": true
     }
   },
